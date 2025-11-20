@@ -61,27 +61,27 @@ df_raw = load_data()
 if df_raw is not None:
 
     # 3. SIDEBAR: MULTI-FILTER
-    st.sidebar.header("📊 Visualisasi Produk Zara")
-    st.sidebar.header("🔍 Filter Data Multi-Layer")
+    st.sidebar.header("🔍 Filter")
 
     # Kita copy data asli ke variabel baru untuk difilter bertahap
     df_filtered = df_raw.copy()
 
     # A. Filter Cluster
     clusters = sorted(df_raw['Cluster'].unique())
-    selected_cluster = st.sidebar.multiselect("Pilih Cluster", clusters, default=clusters)
-    if selected_cluster:
-        df_filtered = df_filtered[df_filtered['Cluster'].isin(selected_cluster)]
+    if st.sidebar.checkbox("Filter Cluster"):
+        selected_cluster = st.sidebar.multiselect("Pilih Cluster", clusters, default=clusters)
+        if selected_cluster:
+            df_filtered = df_filtered[df_filtered['Cluster'].isin(selected_cluster)]
 
     # B. Filter Season
-    if 'season' in df_raw.columns:
+    if 'season' in df_raw.columns and st.sidebar.checkbox("Filter Season"):
         seasons = sorted(df_raw['season'].unique())
         selected_season = st.sidebar.multiselect("Pilih Season (Musim)", seasons, default=seasons)
         if selected_season:
             df_filtered = df_filtered[df_filtered['season'].isin(selected_season)]
 
     # C. Filter Promotion
-    if 'Promotion' in df_raw.columns:
+    if 'Promotion' in df_raw.columns and st.sidebar.checkbox("Filter Promosi"):
         promos = sorted(df_raw['Promotion'].unique())
         # Menggunakan expander agar sidebar tidak terlalu panjang
         with st.sidebar.expander("Filter Promosi & Kategori"):
@@ -90,37 +90,39 @@ if df_raw is not None:
                 df_filtered = df_filtered[df_filtered['Promotion'].isin(selected_promo)]
 
     # D. Filter Section/Category
-    if 'section' in df_raw.columns:
+    if 'section' in df_raw.columns and st.sidebar.checkbox("Filter Section"):
         sections = sorted(df_raw['section'].unique())
-        selected_section = st.multiselect("Section (Pria/Wanita)", sections, default=sections)
+        selected_section = st.sidebar.multiselect("Section (Pria/Wanita)", sections, default=sections)
         if selected_section:
             df_filtered = df_filtered[df_filtered['section'].isin(selected_section)]
 
     # E. Filter Origin
-    if 'Origin' in df_raw.columns:
+    if 'Origin' in df_raw.columns and st.sidebar.checkbox("Filter Origin"):
         origins = sorted(df_raw['Origin'].unique())
-        selected_origin = st.multiselect("Origin", origins, default=origins)
+        selected_origin = st.sidebar.multiselect("Origin", origins, default=origins)
         if selected_origin:
             df_filtered = df_filtered[df_filtered['Origin'].isin(selected_origin)]
 
     # F. Filter Material
-    if 'Material' in df_raw.columns:
+    if 'Material' in df_raw.columns and st.sidebar.checkbox("Filter Material"):
         materials = sorted(df_raw['Material'].unique())
-        selected_material = st.multiselect("Material", materials, default=materials)
+        selected_material = st.sidebar.multiselect("Material", materials, default=materials)
         if selected_material:
             df_filtered = df_filtered[df_filtered['Material'].isin(selected_material)]
 
     # G. Filter Product Position
-    if 'Product Position' in df_raw.columns:
+    if 'Product Position' in df_raw.columns and st.sidebar.checkbox("Filter Product Position"):
         positions = sorted(df_raw['Product Position'].unique())
-        selected_position = st.multiselect("Product Position", positions, default=positions)
+        selected_position = st.sidebar.multiselect("Product Position", positions, default=positions)
         if selected_position:
             df_filtered = df_filtered[df_filtered['Product Position'].isin(selected_position)]
 
+    # Tampilkan df_filtered untuk verifikasi
+    st.write(df_filtered)
 
     # 4. KPI DASHBOARD
 
-    st.title("🛍️ Zara Sales Performance Dashboard")
+    st.title("🛍️ Zara Sales Performance")
     st.caption(f"Menampilkan {df_filtered.shape[0]} produk berdasarkan filter yang dipilih.")
 
     col1, col2, col3, col4 = st.columns(4)
