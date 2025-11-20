@@ -176,7 +176,7 @@ if df_raw is not None:
     # DASHBOARD CONTENT
     # ==========================================
 
-    st.title("🛍️ Zara Sales Performance")
+    st.title("🛍️ Zara Sales *By Group 8*")
     st.markdown("Sistem pendukung keputusan berbasis **K-Means Clustering** untuk strategi *Restocking* & *Markdown*.")
     st.markdown("---")
 
