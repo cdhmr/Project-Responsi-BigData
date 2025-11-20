@@ -11,11 +11,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# ==========================================
 # 1. KONFIGURASI HALAMAN
-# ==========================================
+
 st.set_page_config(
-    page_title="Zara Advanced Analytics",
+    page_title="Zara By Group 8",
     page_icon="🛍️",
     layout="wide"
 )
@@ -29,16 +28,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# 2. LOAD & BERSIHKAN DATA (CRITICAL FIX)
-# ==========================================
+
+# 2. LOAD & BERSIHKAN DATA
+
 @st.cache_data
 def load_data():
     try:
         # Load data
         df = pd.read_csv("Zara_sales_db.csv")
 
-        # --- PERBAIKAN UTAMA: KONVERSI TIPE DATA ---
         # Pastikan kolom angka benar-benar angka (float/int), bukan text
         cols_to_numeric = ['price', 'Sales Volume']
 
@@ -47,8 +45,6 @@ def load_data():
                 # Mengubah ke numerik, jika ada error (huruf) akan jadi NaN
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # Hapus baris yang Sales Volume-nya kosong/NaN agar tidak merusak grafik
-        df = df.dropna(subset=['Sales Volume', 'price'])
 
         # Pastikan kolom Cluster jadi string agar warnanya diskrit (bukan gradasi)
         if 'prediction' in df.columns:
@@ -63,9 +59,9 @@ def load_data():
 df_raw = load_data()
 
 if df_raw is not None:
-    # ==========================================
+
     # 3. SIDEBAR: MULTI-FILTER
-    # ==========================================
+    st.sidebar.header("📊 Visualisasi Produk Zara")
     st.sidebar.header("🔍 Filter Data Multi-Layer")
 
     # Kita copy data asli ke variabel baru untuk difilter bertahap
@@ -77,14 +73,14 @@ if df_raw is not None:
     if selected_cluster:
         df_filtered = df_filtered[df_filtered['Cluster'].isin(selected_cluster)]
 
-    # B. Filter Season (Jika kolom ada)
+    # B. Filter Season
     if 'season' in df_raw.columns:
         seasons = sorted(df_raw['season'].unique())
         selected_season = st.sidebar.multiselect("Pilih Season (Musim)", seasons, default=seasons)
         if selected_season:
             df_filtered = df_filtered[df_filtered['season'].isin(selected_season)]
 
-    # C. Filter Promotion (Jika kolom ada)
+    # C. Filter Promotion
     if 'Promotion' in df_raw.columns:
         promos = sorted(df_raw['Promotion'].unique())
         # Menggunakan expander agar sidebar tidak terlalu panjang
@@ -93,16 +89,37 @@ if df_raw is not None:
             if selected_promo:
                 df_filtered = df_filtered[df_filtered['Promotion'].isin(selected_promo)]
 
-            # D. Filter Section/Category
-            if 'section' in df_raw.columns:
-                sections = sorted(df_raw['section'].unique())
-                selected_section = st.multiselect("Section (Pria/Wanita)", sections, default=sections)
-                if selected_section:
-                    df_filtered = df_filtered[df_filtered['section'].isin(selected_section)]
+    # D. Filter Section/Category
+    if 'section' in df_raw.columns:
+        sections = sorted(df_raw['section'].unique())
+        selected_section = st.multiselect("Section (Pria/Wanita)", sections, default=sections)
+        if selected_section:
+            df_filtered = df_filtered[df_filtered['section'].isin(selected_section)]
 
-    # ==========================================
+    # E. Filter Origin
+    if 'Origin' in df_raw.columns:
+        origins = sorted(df_raw['Origin'].unique())
+        selected_origin = st.multiselect("Origin", origins, default=origins)
+        if selected_origin:
+            df_filtered = df_filtered[df_filtered['Origin'].isin(selected_origin)]
+
+    # F. Filter Material
+    if 'Material' in df_raw.columns:
+        materials = sorted(df_raw['Material'].unique())
+        selected_material = st.multiselect("Material", materials, default=materials)
+        if selected_material:
+            df_filtered = df_filtered[df_filtered['Material'].isin(selected_material)]
+
+    # G. Filter Product Position
+    if 'Product Position' in df_raw.columns:
+        positions = sorted(df_raw['Product Position'].unique())
+        selected_position = st.multiselect("Product Position", positions, default=positions)
+        if selected_position:
+            df_filtered = df_filtered[df_filtered['Product Position'].isin(selected_position)]
+
+
     # 4. KPI DASHBOARD
-    # ==========================================
+
     st.title("🛍️ Zara Sales Performance Dashboard")
     st.caption(f"Menampilkan {df_filtered.shape[0]} produk berdasarkan filter yang dipilih.")
 
@@ -120,9 +137,9 @@ if df_raw is not None:
 
     st.markdown("---")
 
-    # ==========================================
+
     # 5. VISUALISASI UTAMA (BARIS 1)
-    # ==========================================
+
     c_left, c_right = st.columns([2, 1])
 
     with c_left:
@@ -190,9 +207,9 @@ if df_raw is not None:
 
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # ==========================================
+
     # 6. FITUR TOP N PRODUCTS (BARIS 2)
-    # ==========================================
+
     st.markdown("---")
     st.subheader("🏆 Top Produk (Berdasarkan Filter)")
 
@@ -220,9 +237,9 @@ if df_raw is not None:
         fig_top.update_layout(yaxis={'categoryorder':'total ascending'}) # Urutkan visual
         st.plotly_chart(fig_top, use_container_width=True)
 
-    # ==========================================
+
     # 7. DETAIL SEBARAN (SCATTER)
-    # ==========================================
+
     with st.expander("📍 Lihat Detail Sebaran (Scatter Plot)"):
         st.markdown("Grafik ini menunjukkan posisi setiap produk. Arahkan mouse untuk melihat detail nama.")
 
