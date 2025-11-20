@@ -117,8 +117,6 @@ if df_raw is not None:
         if selected_position:
             df_filtered = df_filtered[df_filtered['Product Position'].isin(selected_position)]
 
-    # Tampilkan df_filtered untuk verifikasi
-    st.write(df_filtered)
 
     # 4. KPI DASHBOARD
 
