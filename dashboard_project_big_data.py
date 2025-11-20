@@ -11,8 +11,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# ==========================================
 # 1. KONFIGURASI HALAMAN
-
+# ==========================================
 st.set_page_config(
     page_title="Zara By Group 8",
     page_icon="🛍️",
@@ -25,16 +26,21 @@ st.markdown("""
         .block-container {padding-top: 1rem;}
         h1, h2, h3 {font-family: 'Segoe UI', sans-serif;}
         .stMetric {background-color: #F0F2F6; padding: 10px; border-radius: 10px;}
+        .insight-box {padding: 15px; border-radius: 10px; margin-bottom: 20px;}
+        .high-performer {background-color: #d4edda; color: #155724; border-left: 5px solid #28a745;}
+        .low-performer {background-color: #f8d7da; color: #721c24; border-left: 5px solid #dc3545;}
     </style>
 """, unsafe_allow_html=True)
 
 
+# ==========================================
 # 2. LOAD & BERSIHKAN DATA
-
+# ==========================================
 @st.cache_data
 def load_data():
     try:
-        # Load data
+        # --- PERHATIAN: Pastikan nama file sesuai dengan yang ada di folder ---
+        # Jika error, coba ganti jadi "Zara_sales_final_complete.csv"
         df = pd.read_csv("Zara_sales_db.csv")
 
         # Pastikan kolom angka benar-benar angka (float/int), bukan text
@@ -45,6 +51,8 @@ def load_data():
                 # Mengubah ke numerik, jika ada error (huruf) akan jadi NaN
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # Hapus data yang NaN di kolom penting
+        df = df.dropna(subset=cols_to_numeric)
 
         # Pastikan kolom Cluster jadi string agar warnanya diskrit (bukan gradasi)
         if 'prediction' in df.columns:
@@ -58,20 +66,66 @@ def load_data():
 
 df_raw = load_data()
 
+# ==========================================
+# 3. INTELLIGENT PROFILING ENGINE (Logic Bisnis)
+# ==========================================
+def get_cluster_profiles(df):
+    # Hitung rata-rata global
+    global_avg_sales = df['Sales Volume'].mean()
+    global_avg_price = df['price'].mean()
+
+    # Hitung rata-rata per cluster
+    profiles = df.groupby('Cluster').agg({
+        'Sales Volume': 'mean',
+        'price': 'mean',
+        'Product ID': 'count' if 'Product ID' in df.columns else 'size'
+    }).reset_index()
+
+    # Rename count column if necessary
+    if 'Product ID' not in profiles.columns and 'size' in profiles.columns:
+        profiles = profiles.rename(columns={'size': 'Product ID'})
+
+    # Berikan Label Bisnis secara Dinamis
+    def label_cluster(row):
+        sales_status = "High" if row['Sales Volume'] > global_avg_sales else "Low"
+        price_status = "High" if row['price'] > global_avg_price else "Low"
+
+        if sales_status == "High" and price_status == "High":
+            return "⭐ Premium Best Seller", "Pertahankan Stok & VIP Marketing"
+        elif sales_status == "High" and price_status == "Low":
+            return "🔥 Volume Mover", "Pastikan Ketersediaan Stok (Fast Moving)"
+        elif sales_status == "Low" and price_status == "High":
+            return "💎 Premium Slow", "Eksklusif / Cek Strategi Marketing"
+        else:
+            return "⚠️ Dead Stock Risk", "Perlu Markdown / Clearance Sale"
+
+    profiles[['Profile', 'Strategy']] = profiles.apply(
+        lambda x: pd.Series(label_cluster(x)), axis=1
+    )
+    return profiles, global_avg_sales
+
+# ==========================================
+# 4. MAIN APPLICATION FLOW
+# ==========================================
+
 if df_raw is not None:
 
-    # 3. SIDEBAR: MULTI-FILTER
-    st.sidebar.header("🔍 Filter")
+    # --- SIDEBAR: MULTI-FILTER ---
+    st.sidebar.header("🔍 Filter & Navigasi")
+
+    # Pilihan Tampilan
+    view_mode = st.sidebar.radio("Pilih Tampilan:", ["Home", "Executive Summary", "Cluster Analysis", "Action Plan"])
 
     # Kita copy data asli ke variabel baru untuk difilter bertahap
     df_filtered = df_raw.copy()
 
     # A. Filter Cluster
-    clusters = sorted(df_raw['Cluster'].unique())
-    if st.sidebar.checkbox("Filter Cluster"):
-        selected_cluster = st.sidebar.multiselect("Pilih Cluster", clusters, default=clusters)
-        if selected_cluster:
-            df_filtered = df_filtered[df_filtered['Cluster'].isin(selected_cluster)]
+    if 'Cluster' in df_raw.columns:
+        clusters = sorted(df_raw['Cluster'].unique())
+        if st.sidebar.checkbox("Filter Cluster", value=False):
+            selected_cluster = st.sidebar.multiselect("Pilih Cluster", clusters, default=clusters)
+            if selected_cluster:
+                df_filtered = df_filtered[df_filtered['Cluster'].isin(selected_cluster)]
 
     # B. Filter Season
     if 'season' in df_raw.columns and st.sidebar.checkbox("Filter Season"):
@@ -83,11 +137,9 @@ if df_raw is not None:
     # C. Filter Promotion
     if 'Promotion' in df_raw.columns and st.sidebar.checkbox("Filter Promosi"):
         promos = sorted(df_raw['Promotion'].unique())
-        # Menggunakan expander agar sidebar tidak terlalu panjang
-        with st.sidebar.expander("Filter Promosi & Kategori"):
-            selected_promo = st.multiselect("Status Promosi", promos, default=promos)
-            if selected_promo:
-                df_filtered = df_filtered[df_filtered['Promotion'].isin(selected_promo)]
+        selected_promo = st.multiselect("Status Promosi", promos, default=promos)
+        if selected_promo:
+            df_filtered = df_filtered[df_filtered['Promotion'].isin(selected_promo)]
 
     # D. Filter Section/Category
     if 'section' in df_raw.columns and st.sidebar.checkbox("Filter Section"):
@@ -117,143 +169,234 @@ if df_raw is not None:
         if selected_position:
             df_filtered = df_filtered[df_filtered['Product Position'].isin(selected_position)]
 
+    # Hitung profil cluster berdasarkan data RAW (Global Logic)
+    profiles, avg_sales_threshold = get_cluster_profiles(df_raw)
 
-    # 4. KPI DASHBOARD
+    # ==========================================
+    # DASHBOARD CONTENT
+    # ==========================================
 
     st.title("🛍️ Zara Sales Performance")
-    st.caption(f"Menampilkan {df_filtered.shape[0]} produk berdasarkan filter yang dipilih.")
-
-    col1, col2, col3, col4 = st.columns(4)
-
-    avg_sales = df_filtered['Sales Volume'].mean()
-    total_sales = df_filtered['Sales Volume'].sum()
-    avg_price = df_filtered['price'].mean()
-    top_performer = df_filtered.loc[df_filtered['Sales Volume'].idxmax()]['name'] if not df_filtered.empty else "-"
-
-    col1.metric("Rata-rata Penjualan", f"{avg_sales:,.1f} Pcs")
-    col2.metric("Total Volume Terjual", f"{total_sales:,.0f}")
-    col3.metric("Rata-rata Harga", f"€ {avg_price:.2f}")
-    col4.metric("Produk Terlaris", f"{str(top_performer)[:20]}...")
-
+    st.markdown("Sistem pendukung keputusan berbasis **K-Means Clustering** untuk strategi *Restocking* & *Markdown*.")
     st.markdown("---")
 
+    # --- HALAMAN 1: HOME / DASHBOARD UTAMA ---
+    if view_mode == "Home":  # <--- FIXED TYPO "Homw"
+        st.caption(f"Menampilkan {df_filtered.shape[0]} produk berdasarkan filter yang dipilih.")
 
-    # 5. VISUALISASI UTAMA (BARIS 1)
+        col1, col2, col3, col4 = st.columns(4)
 
-    c_left, c_right = st.columns([2, 1])
+        avg_sales = df_filtered['Sales Volume'].mean()
+        total_sales = df_filtered['Sales Volume'].sum()
+        avg_price = df_filtered['price'].mean()
+        top_performer = df_filtered.loc[df_filtered['Sales Volume'].idxmax()]['name'] if not df_filtered.empty else "-"
 
-    with c_left:
-        # VIZ: Rata-rata Penjualan & Harga per Kategori (Group Bar)
-        st.subheader("📊 Perbandingan Rata-rata (Sales vs Price)")
+        col1.metric("Rata-rata Penjualan", f"{avg_sales:,.1f} Pcs")
+        col2.metric("Total Volume Terjual", f"{total_sales:,.0f}")
+        col3.metric("Rata-rata Harga", f"€ {avg_price:.2f}")
+        col4.metric("Produk Terlaris", f"{str(top_performer)[:20]}...")
 
-        # Pilihan grouping dinamis
-        group_col = st.selectbox("Kelompokkan Grafik Berdasarkan:",
-                                 ['Cluster', 'season', 'section', 'Promotion'],
-                                 index=0)
+        st.markdown("---")
 
-        # Agregasi Data
-        agg_df = df_filtered.groupby(group_col)[['Sales Volume', 'price']].mean().reset_index()
+        # 5. VISUALISASI UTAMA
+        c_left, c_right = st.columns([2, 1])
 
-        # Melt agar bisa dibuat grouped bar chart
-        agg_melted = agg_df.melt(id_vars=group_col, var_name='Metric', value_name='Value')
+        with c_left:
+            # VIZ: Rata-rata Penjualan & Harga per Kategori (Group Bar)
+            st.subheader("📊 Perbandingan Rata-rata (Sales vs Price)")
 
-        fig_bar = px.bar(
-            agg_melted,
-            x=group_col,
-            y='Value',
-            color='Metric',
-            barmode='group',
-            text_auto='.2s',
-            color_discrete_sequence=['#2E86C1', '#E67E22'], # Biru & Oranye
-            title=f"Rata-rata Sales & Price per {group_col}",
-            height=400
-        )
-        st.plotly_chart(fig_bar, use_container_width=True)
+            # Pilihan grouping dinamis
+            valid_groups = [c for c in ['Cluster', 'season', 'section', 'Promotion'] if c in df_filtered.columns]
+            group_col = st.selectbox("Kelompokkan Grafik Berdasarkan:", valid_groups, index=0)
 
-    with c_right:
-        # VIZ: Pie Chart Komposisi
-        st.subheader("🍰 Komposisi Data")
-        pie_metric = st.radio("Metrik:", ['Sales Volume', 'Jumlah Produk (Count)'], horizontal=True)
+            # Agregasi Data
+            agg_df = df_filtered.groupby(group_col)[['Sales Volume', 'price']].mean().reset_index()
 
-        if pie_metric == 'Sales Volume':
-            val_col = 'Sales Volume'
-            agg_func = None # Pie chart default sum values
-        else:
-            val_col = group_col # Dummy col
-            # Untuk count, kita perlu trik sedikit
-            agg_func = None
+            # Melt agar bisa dibuat grouped bar chart
+            agg_melted = agg_df.melt(id_vars=group_col, var_name='Metric', value_name='Value')
 
-        if pie_metric == 'Sales Volume':
-            fig_pie = px.pie(
+            fig_bar = px.bar(
+                agg_melted,
+                x=group_col,
+                y='Value',
+                color='Metric',
+                barmode='group',
+                text_auto='.2s',
+                color_discrete_sequence=['#2E86C1', '#E67E22'],
+                title=f"Rata-rata Sales & Price per {group_col}",
+                height=400
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        with c_right:
+            # VIZ: Pie Chart Komposisi
+            st.subheader("🍰 Komposisi Data")
+            pie_metric = st.radio("Metrik:", ['Sales Volume', 'Jumlah Produk (Count)'], horizontal=True)
+
+            if pie_metric == 'Sales Volume':
+                fig_pie = px.pie(
+                    df_filtered,
+                    names=group_col,
+                    values='Sales Volume',
+                    hole=0.4,
+                    title=f"Share Sales Volume per {group_col}",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+            else:
+                count_df = df_filtered[group_col].value_counts().reset_index()
+                count_df.columns = [group_col, 'Count']
+                fig_pie = px.pie(
+                    count_df,
+                    names=group_col,
+                    values='Count',
+                    hole=0.4,
+                    title=f"Proporsi Jumlah Produk per {group_col}",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        # 6. FITUR TOP N PRODUCTS
+        st.markdown("---")
+        st.subheader("🏆 Top Produk (Berdasarkan Filter)")
+
+        col_top_control, col_top_viz = st.columns([1, 3])
+
+        with col_top_control:
+            n_products = st.slider("Jumlah Produk Ditampilkan:", 5, 20, 10)
+            sort_asc = st.checkbox("Tampilkan Produk Terendah (Bottom)", value=False)
+
+        with col_top_viz:
+            top_df = df_filtered.sort_values(by='Sales Volume', ascending=sort_asc).head(n_products)
+
+            fig_top = px.bar(
+                top_df,
+                x='Sales Volume',
+                y='name',
+                orientation='h',
+                color='Cluster' if 'Cluster' in df_filtered.columns else None,
+                text='Sales Volume',
+                title=f"Top {n_products} Produk {'Terendah' if sort_asc else 'Tertinggi'} (Sales)",
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                height=400 + (n_products * 10)
+            )
+            fig_top.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_top, use_container_width=True)
+
+        # 7. DETAIL SEBARAN (SCATTER)
+        with st.expander("📍 Lihat Detail Sebaran (Scatter Plot)"):
+            st.markdown("Grafik ini menunjukkan posisi setiap produk. Arahkan mouse untuk melihat detail nama.")
+
+            fig_scatter = px.scatter(
                 df_filtered,
-                names=group_col,
-                values='Sales Volume',
-                hole=0.4,
-                title=f"Share Sales Volume per {group_col}",
-                color_discrete_sequence=px.colors.qualitative.Pastel
+                x='price',
+                y='Sales Volume',
+                color=group_col,
+                hover_data=['name', 'Cluster'] + ([col for col in ['season'] if col in df_filtered.columns]),
+                title=f"Hubungan Price vs Sales (Dikelompokkan oleh {group_col})",
+                opacity=0.7,
+                height=500
             )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # --- HALAMAN 2: EXECUTIVE SUMMARY ---
+    elif view_mode == "Executive Summary":
+        # KPI Cards
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Revenue Est.", f"€ {(df_filtered['price'] * df_filtered['Sales Volume']).sum():,.0f}")
+        col2.metric("Total Sales Volume", f"{df_filtered['Sales Volume'].sum():,.0f}")
+        col3.metric("Rata-rata Harga", f"€ {df_filtered['price'].mean():.2f}")
+        col4.metric("Jumlah SKU", f"{df_filtered.shape[0]}")
+
+        # Chart Utama
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            st.subheader("Peta Sebaran Produk (Price vs Sales)")
+            fig_scatter = px.scatter(
+                df_filtered, x="price", y="Sales Volume", color="Cluster",
+                hover_data=['name'], title="Identifikasi Posisi Produk",
+                color_discrete_sequence=px.colors.qualitative.Bold, height=400
+            )
+            st.plotly_chart(fig_scatter, use_container_width=True)
+
+        with c2:
+            st.subheader("Komposisi Cluster")
+            fig_pie = px.pie(df_filtered, names='Cluster', title="Proporsi Jumlah Produk", hole=0.4)
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    # --- HALAMAN 3: CLUSTER ANALYSIS (PROFILING) ---
+    elif view_mode == "Cluster Analysis":
+        st.header("🔍 Profiling Hasil Clustering")
+        st.info("Algoritma secara otomatis melabeli setiap cluster berdasarkan karakteristik rata-ratanya.")
+
+        # Tampilkan Kartu Insight untuk setiap Cluster
+        # Filter profiles based on selected clusters from sidebar
+        if 'Cluster' in df_filtered.columns:
+             selected_clusters_list = df_filtered['Cluster'].unique()
         else:
-            # Hitung count manual agar akurat
-            count_df = df_filtered[group_col].value_counts().reset_index()
-            count_df.columns = [group_col, 'Count']
-            fig_pie = px.pie(
-                count_df,
-                names=group_col,
-                values='Count',
-                hole=0.4,
-                title=f"Proporsi Jumlah Produk per {group_col}",
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
+             selected_clusters_list = profiles['Cluster'].unique()
 
-        st.plotly_chart(fig_pie, use_container_width=True)
+        for index, row in profiles.iterrows():
+            if row['Cluster'] in selected_clusters_list:
+                with st.expander(f"CLUSTER {row['Cluster']} : {row['Profile']}", expanded=True):
+                    c1, c2, c3 = st.columns([1, 2, 1])
+                    with c1:
+                        st.metric("Rata-rata Sales", f"{row['Sales Volume']:.1f}")
+                        st.metric("Rata-rata Harga", f"€ {row['price']:.2f}")
+                    with c2:
+                        st.markdown(f"**Karakteristik:**")
+                        st.markdown(f"Cluster ini berisi **{row['Product ID']} produk**.")
+                        st.markdown(f"Posisi Sales: {'Tinggi' if row['Sales Volume'] > avg_sales_threshold else 'Rendah'}")
+                    with c3:
+                        st.success(f"💡 **Rekomendasi:**\n\n{row['Strategy']}")
 
+    # --- HALAMAN 4: ACTION PLAN (TUJUAN PENELITIAN) ---
+    elif view_mode == "Action Plan":
+        st.header("🎯 Strategi Bisnis & Rekomendasi")
 
-    # 6. FITUR TOP N PRODUCTS (BARIS 2)
+        tab1, tab2 = st.tabs(["📦 Prioritas Restocking", "🏷️ Kandidat Markdown (Diskon)"])
 
-    st.markdown("---")
-    st.subheader("🏆 Top Produk (Berdasarkan Filter)")
+        # LOGIC: Filter produk berdasarkan Cluster Profile
+        high_sales_clusters = profiles[profiles['Profile'].str.contains('Best Seller|Volume Mover')]['Cluster'].tolist()
+        low_sales_clusters = profiles[profiles['Profile'].str.contains('Dead Stock|Premium Slow')]['Cluster'].tolist()
 
-    col_top_control, col_top_viz = st.columns([1, 3])
+        # Use df_filtered here so sidebar filters apply (e.g. Show me Restock list for WINTER season only)
+        current_df = df_filtered
 
-    with col_top_control:
-        n_products = st.slider("Jumlah Produk Ditampilkan:", 5, 20, 10)
-        sort_asc = st.checkbox("Tampilkan Produk Terendah (Bottom)", value=False)
+        with tab1:
+            st.markdown("""
+            <div class="insight-box high-performer">
+                <b>STRATEGI RESTOCKING:</b> Berikut adalah produk dari Cluster dengan performa penjualan TINGGI.
+                Pastikan ketersediaan stok barang ini di gudang dan toko untuk menghindari <i>Lost Sales</i>.
+            </div>
+            """, unsafe_allow_html=True)
 
-    with col_top_viz:
-        # Sort data berdasarkan Sales
-        top_df = df_filtered.sort_values(by='Sales Volume', ascending=sort_asc).head(n_products)
+            df_restock = current_df[current_df['Cluster'].isin(high_sales_clusters)].sort_values('Sales Volume', ascending=False)
+            if not df_restock.empty:
+                st.dataframe(df_restock[['Product ID', 'name', 'price', 'Sales Volume', 'Cluster', 'section']].head(100))
 
-        fig_top = px.bar(
-            top_df,
-            x='Sales Volume',
-            y='name', # Ganti 'name' dengan nama kolom produk Anda jika beda
-            orientation='h',
-            color='Cluster',
-            text='Sales Volume',
-            title=f"Top {n_products} Produk {'Terendah' if sort_asc else 'Tertinggi'} (Sales)",
-            color_discrete_sequence=px.colors.qualitative.Bold,
-            height=400 + (n_products * 10) # Tinggi dinamis
-        )
-        fig_top.update_layout(yaxis={'categoryorder':'total ascending'}) # Urutkan visual
-        st.plotly_chart(fig_top, use_container_width=True)
+                csv_restock = df_restock.to_csv(index=False).encode('utf-8')
+                st.download_button("Unduh Daftar Restock (CSV)", csv_restock, "restock_list.csv", "text/csv")
+            else:
+                st.warning("Tidak ada produk High-Performance yang ditemukan dengan filter saat ini.")
 
+        with tab2:
+            st.markdown("""
+            <div class="insight-box low-performer">
+                <b>STRATEGI MARKDOWN:</b> Berikut adalah produk dari Cluster dengan performa penjualan RENDAH.
+                Pertimbangkan strategi promosi, bundling, atau diskon (Markdown) untuk mencairkan aset inventori.
+            </div>
+            """, unsafe_allow_html=True)
 
-    # 7. DETAIL SEBARAN (SCATTER)
+            df_markdown = current_df[current_df['Cluster'].isin(low_sales_clusters)].sort_values('Sales Volume', ascending=True)
 
-    with st.expander("📍 Lihat Detail Sebaran (Scatter Plot)"):
-        st.markdown("Grafik ini menunjukkan posisi setiap produk. Arahkan mouse untuk melihat detail nama.")
+            if not df_markdown.empty:
+                st.dataframe(df_markdown[['Product ID', 'name', 'price', 'Sales Volume', 'Cluster', 'season']].head(100))
 
-        fig_scatter = px.scatter(
-            df_filtered,
-            x='price',
-            y='Sales Volume',
-            color=group_col,
-            hover_data=['name', 'Cluster', 'season'],
-            title=f"Hubungan Price vs Sales (Dikelompokkan oleh {group_col})",
-            opacity=0.7,
-            height=500
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
+                csv_markdown = df_markdown.to_csv(index=False).encode('utf-8')
+                st.download_button("Unduh Daftar Markdown (CSV)", csv_markdown, "markdown_candidates.csv", "text/csv")
+            else:
+                st.info("Tidak ada data produk Low-Sales yang sesuai filter.")
 
 else:
-    st.error("Data tidak ditemukan. Pastikan file 'Zara_sales_final_complete.csv' ada di folder yang sama.")
+    st.error("Data tidak ditemukan. Pastikan file 'Zara_sales_db.csv' (atau file yang sesuai) ada di folder yang sama.")
